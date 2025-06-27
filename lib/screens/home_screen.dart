@@ -1,105 +1,6 @@
-// import 'package:flutter/material.dart';
-// import 'package:flutter_provider_pomodorotimer_chart/widgets/timer_circle.dart';
-// import 'package:provider/provider.dart';
-
-// import '../models/task.dart';
-// import '../providers/task_provider.dart';
-
-// class HomeScreen extends StatefulWidget {
-//   const HomeScreen({super.key});
-
-//   @override
-//   State<HomeScreen> createState() => _HomeScreenState();
-// }
-
-// class _HomeScreenState extends State<HomeScreen> {
-//   int _timer = 25 * 60;
-//   bool _isRunning = false;
-//   late Task? _selectedTask;
-
-//   @override
-//   void initState() {
-//     super.initState();
-//     _selectedTask = null;
-//   }
-
-//   void _startTimer(TaskProvider provider) {
-//     if (_isRunning) return;
-//     _isRunning = true;
-//     setState(() {});
-//     Future.doWhile(() async {
-//       await Future.delayed(const Duration(seconds: 1));
-//       if (!_isRunning || _timer == 0) return false;
-//       setState(() => _timer--);
-//       if (_timer == 0 && _selectedTask != null) {
-//         provider.incrementPomodoro(_selectedTask!);
-//         _isRunning = false;
-//         _timer = 25 * 60;
-//       }
-//       return _isRunning;
-//     });
-//   }
-
-//   void _stopTimer() {
-//     _isRunning = false;
-//     setState(() {});
-//   }
-
-//   String _formatTime(int totalSeconds) {
-//     final min = (totalSeconds ~/ 60).toString().padLeft(2, '0');
-//     final sec = (totalSeconds % 60).toString().padLeft(2, '0');
-//     return '$min:$sec';
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     final provider = Provider.of<TaskProvider>(context);
-//     final int totalSeconds = 25 * 60;
-//     final double progress = 1.0 - (_timer / totalSeconds);
-
-//     return Scaffold(
-//       body: Center(
-//         child: Column(
-//           mainAxisAlignment: MainAxisAlignment.center,
-//           children: [
-//             // ↓ここから変更
-//             TimerCircle(timer: _timer, totalSeconds: 25 * 60),
-//             const SizedBox(height: 16),
-//             const SizedBox(height: 16),
-//             Row(
-//               mainAxisAlignment: MainAxisAlignment.center,
-//               children: [
-//                 ElevatedButton.icon(
-//                   icon: Icon(_isRunning ? Icons.pause : Icons.play_arrow),
-//                   label: Text(_isRunning ? '一時停止' : 'スタート'),
-//                   onPressed: () {
-//                     if (_isRunning) {
-//                       _stopTimer();
-//                     } else {
-//                       _startTimer(provider);
-//                     }
-//                   },
-//                 ),
-//                 const SizedBox(width: 16),
-//                 ElevatedButton.icon(
-//                   icon: const Icon(Icons.restore),
-//                   label: const Text('リセット'),
-//                   onPressed: () {
-//                     setState(() => _timer = 25 * 60);
-//                     _stopTimer();
-//                   },
-//                 ),
-//               ],
-//             ),
-//             const SizedBox(height: 32),
-//           ],
-//         ),
-//       ),
-//     );
-//   }
-// }
-
 // home_screen.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_provider_pomodorotimer_chart/constants/config.dart';
 import 'package:flutter_provider_pomodorotimer_chart/widgets/timer_circle.dart';
@@ -116,9 +17,13 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _timer = PomodoroConfig.pomodoroSeconds;
+  // タイマーの状態を管理
+  int _timerValue = PomodoroConfig.pomodoroSeconds;
+  Timer? _timerController;
   bool _isRunning = false;
+  // 選択されたタスクを管理
   late Task? _selectedTask;
+  // アニメーションのキーを管理
   bool _animateKey = false;
 
   @override
@@ -127,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _selectedTask = null;
   }
 
+  // アニメーションのキーを切り替える
   void _toggleAnimateKey() {
     setState(() {
       _animateKey = !_animateKey;
@@ -134,30 +40,50 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _startTimer(TaskProvider provider) {
+    // 既にタイマーが動いていたら何もしない
     if (_isRunning) return;
-    _isRunning = true;
-    _toggleAnimateKey(); // スタート時アニメ
-    setState(() {});
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
-      if (!_isRunning || _timer == 0) return false;
-      setState(() => _timer--);
-      if (_timer == 0 && _selectedTask != null) {
-        provider.incrementPomodoro(_selectedTask!);
-        _isRunning = false;
-        _timer = PomodoroConfig.pomodoroSeconds;
+
+    setState(() {
+      _isRunning = true;
+      _toggleAnimateKey(); // スタート時アニメ
+    });
+
+    // 1秒ごとに実行されるタイマーを開始
+    _timerController = Timer.periodic(const Duration(seconds: 1), (timer) {
+      // タイマーが1秒以上残っている場合
+      if (_timerValue > 0) {
+        setState(() {
+          _timerValue--; // 1秒減らす
+        });
       }
-      return _isRunning;
+      // タイマーが0になった場合
+      else {
+        _timerController?.cancel(); // タイマーを停止する
+
+        // タスクが選択されていれば、ポモドーロを記録して通知を出す
+        if (_selectedTask != null) {
+          provider.incrementPomodoro();
+        }
+
+        // 状態をリセットしてUIを更新する
+        setState(() {
+          _isRunning = false;
+          provider.incrementPomodoro();
+          _timerValue = PomodoroConfig.pomodoroSeconds;
+        });
+      }
     });
   }
 
+  // タイマーを停止する
   void _stopTimer() {
     _isRunning = false;
     setState(() {});
   }
 
+  // タイマーをリセットする
   void _resetTimer() {
-    setState(() => _timer = PomodoroConfig.pomodoroSeconds);
+    setState(() => _timerValue = PomodoroConfig.pomodoroSeconds);
     _toggleAnimateKey(); // リセット時アニメ
     _stopTimer();
   }
@@ -172,7 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             TimerCircle(
-              timer: _timer,
+              timer: _timerValue,
               totalSeconds: PomodoroConfig.pomodoroSeconds,
               animateKey: _animateKey,
             ),
